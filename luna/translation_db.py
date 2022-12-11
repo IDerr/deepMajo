@@ -144,24 +144,12 @@ class TranslationDb:
 
     def export_scene(self, scene_name, output_basedir):
         if scene_name not in self.scene_names():
+            print(f"Scene Name {scene_name} not in all scenes")
             return
 
-        # Generate the full export path
-        is_arc_scene = '_ARC' in scene_name
-        is_ciel_scene = '_CIEL' in scene_name
-        is_qa_scene = 'QA' in scene_name
-        is_common_scene = not any([is_arc_scene, is_ciel_scene, is_qa_scene])
+        is_common_scene = True
         export_path = [output_basedir]
-        if is_arc_scene or is_ciel_scene:
-            day = int(scene_name.split('_')[0])
-            export_path += [
-                'Arcueid' if is_arc_scene else 'Ciel',
-                f'Day {day}'
-            ]
-        elif is_qa_scene:
-            export_path += ['QA']
-        elif is_common_scene:
-            export_path += ['Common']
+        export_path += ['Common']
 
         # Ensure the export dir exists
         output_basedir = os.path.join(*export_path)
@@ -187,12 +175,12 @@ class TranslationDb:
     def generate_linebroken_text_map(self, perform_charswap=False):
         # Iterate each scene in the translation DB, apply line breaking
         # and control codes and stick the result into a map of offset -> string
-        offset_to_string = {}
+        offset_to_string = {"jp":{}, "en":{}, "cn": {}, "cn_t":{}}
 
         for scene_name, scene_commands in self._scene_map.items():
             cursor_position = 0
             prev_page_number = None
-            scene_is_qa = scene_name.startswith('QA')
+            scene_is_qa = True
             # We need some amount of lookahead for glue lines, so iterate
             # by offset here
             for cmd_offset in range(len(scene_commands)):
@@ -219,170 +207,215 @@ class TranslationDb:
                 # The translation text may contain linebreaks, as allowed by
                 # the import/export format. Remove these now. Linebreaks
                 # intended for display in-game must be coded for using %{n}
-                tl_text = tl_text.replace('\n', '')
+                # tl_text = tl_text.replace('\n', '')
 
-                # If this line is not glued to the line that came before it,
-                # reset the accumulated cursor position
-                # However, if this is a QA scene, _all_ lines count as glued
-                # due to modifications to the allscr.
-                force_glue = '%{force_glue}' in tl_text
-                if not (command.is_glued or force_glue) and not scene_is_qa:
-                    cursor_position = 0
+                # # If this line is not glued to the line that came before it,
+                # # reset the accumulated cursor position
+                # # However, if this is a QA scene, _all_ lines count as glued
+                # # due to modifications to the allscr.
+                # force_glue = '%{force_glue}' in tl_text
+                # if not (command.is_glued or force_glue):
+                #     cursor_position = 0
 
-                # If we have turned the page, we also want to rezero the
-                # cursor position
-                if command.page_number != prev_page_number:
-                    prev_page_number = command.page_number
-                    cursor_position = 0
+                # # If we have turned the page, we also want to rezero the
+                # # cursor position
+                # if command.page_number != prev_page_number:
+                #     prev_page_number = command.page_number
+                #     cursor_position = 0
 
-                # Reify any custom control codes present in the line
-                coded_text = RubyUtils.apply_control_codes(tl_text)
+                # # Reify any custom control codes present in the line
+                # coded_text = RubyUtils.apply_control_codes(tl_text)
 
-                # If we are performing a charswap, do so now
-                if perform_charswap:
-                    coded_text = ''.join([
-                        self._charswap_map.get(c, c) for c in coded_text
-                    ])
+                # # If we are performing a charswap, do so now
+                # if perform_charswap:
+                #     coded_text = ''.join([
+                #         self._charswap_map.get(c, c) for c in coded_text
+                #     ])
 
-                # If this line is glued, and would start with a space, but the
-                # preceding line ended in a newline, drop the leading space.
-                if coded_text and command.is_glued and cmd_offset - 1 >= 0:
-                    prev_cmd = scene_commands[cmd_offset-1]
-                    # Need to strip the padding \r\n from lines
-                    prev_broken_line = offset_to_string[
-                        prev_cmd.offset].replace("\r\n", "")
-                    if prev_broken_line and \
-                       prev_broken_line[-1] == '\n' and \
-                       coded_text[0] == ' ':
-                        coded_text = coded_text[1:]
+                # # If this line is glued, and would start with a space, but the
+                # # preceding line ended in a newline, drop the leading space.
+                # if coded_text and command.is_glued and cmd_offset - 1 >= 0:
+                #     prev_cmd = scene_commands[cmd_offset-1]
+                #     # Need to strip the padding \r\n from lines
+                #     prev_broken_line = offset_to_string["en"][
+                #         prev_cmd.offset].replace("\r\n", "")
+                #     if prev_broken_line and \
+                #        prev_broken_line[-1] == '\n' and \
+                #        coded_text[0] == ' ':
+                #         coded_text = coded_text[1:]
 
-                # Break the text, unless this is a QA scene in which case
-                # it's all manual
-                linebroken_text = (
-                    coded_text if scene_is_qa else
-                    RubyUtils.linebreak_text(
-                        coded_text,
-                        Constants.CHARS_PER_LINE,
-                        start_cursor_pos=cursor_position
-                    )
-                )
+                # # Break the text, unless this is a QA scene in which case
+                # # it's all manual
+                # linebroken_text = (
+                #     coded_text if scene_is_qa else
+                #     RubyUtils.linebreak_text(
+                #         coded_text,
+                #         Constants.CHARS_PER_LINE,
+                #         start_cursor_pos=cursor_position
+                #     )
+                # )
 
-                # Check if the broken text contains any newlines, and update
-                # the new cursor position accordingly
-                did_break_line = len(linebroken_text.split('\n')) > 1
-                final_broken_line = linebroken_text.split('\n')[-1]
-                old_cursor_position = cursor_position
-                if did_break_line:
-                    cursor_position = RubyUtils.noruby_len(final_broken_line)
-                else:
-                    cursor_position += RubyUtils.noruby_len(final_broken_line)
+                # # Check if the broken text contains any newlines, and update
+                # # the new cursor position accordingly
+                # did_break_line = len(linebroken_text.split('\n')) > 1
+                # final_broken_line = linebroken_text.split('\n')[-1]
+                # old_cursor_position = cursor_position
+                # if did_break_line:
+                #     cursor_position = RubyUtils.noruby_len(final_broken_line)
+                # else:
+                #     cursor_position += RubyUtils.noruby_len(final_broken_line)
 
-                # Wrap the cursor position if necessary
-                cursor_position = \
-                    cursor_position % Constants.CHARS_PER_LINE
+                # # Wrap the cursor position if necessary
+                # cursor_position = \
+                #     cursor_position % Constants.CHARS_PER_LINE
 
-                # Test to see if the next line is glued
-                if cmd_offset + 1 < len(scene_commands):
-                    next_cmd = scene_commands[cmd_offset+1]
-                    if next_cmd.is_glued and linebroken_text:
-                        # Need to check if glueing this line screws anything up
-                        # - If next line starts with space, and current line is
-                        #   precicely 55 chars, force newline at the end of
-                        #   this current line
-                        next_line = self._line_by_hash[next_cmd.jp_hash]
-                        next_tl = next_line.en_text or tl_line.jp_text
-                        if next_tl and next_tl[0] == ' ' \
-                                and linebroken_text[-1] != '\n':
-                            if cursor_position == 0:
-                                linebroken_text += "\n"
-                                cursor_position = 0
+                # # Test to see if the next line is glued
+                # if cmd_offset + 1 < len(scene_commands):
+                #     next_cmd = scene_commands[cmd_offset+1]
+                #     if next_cmd.is_glued and linebroken_text:
+                #         # Need to check if glueing this line screws anything up
+                #         # - If next line starts with space, and current line is
+                #         #   precicely 55 chars, force newline at the end of
+                #         #   this current line
+                #         next_line = self._line_by_hash[next_cmd.jp_hash]
+                #         next_tl = next_line.en_text or tl_line.jp_text
+                #         if next_tl and next_tl[0] == ' ' \
+                #                 and linebroken_text[-1] != '\n':
+                #             if cursor_position == 0:
+                #                 linebroken_text += "\n"
+                #                 cursor_position = 0
 
-                        # If next line does not start with a space, re-break
-                        # this line accounting for the glue characters as
-                        # part of the final word IF it would cause a linebreak
-                        # when added
-                        next_word_len = RubyUtils.noruby_len(
-                            next_tl.split(' ')[0])
-                        next_word_would_break = False
-                        if did_break_line:
-                            next_word_would_break = \
-                                RubyUtils.noruby_len(final_broken_line) + \
-                                next_word_len > Constants.CHARS_PER_LINE
-                        else:
-                            next_word_would_break = \
-                                old_cursor_position + \
-                                RubyUtils.noruby_len(final_broken_line) + \
-                                next_word_len > Constants.CHARS_PER_LINE
-                        if next_tl and next_tl[0] != ' ' \
-                                and linebroken_text[-1] != '\n' \
-                                and next_word_would_break:
-                            # If the broken line contains spaces, change
-                            # the final space to a newline
-                            if ' ' in linebroken_text:
-                                fragments = linebroken_text.split(' ')
-                                linebroken_text = ' '.join(
-                                    fragments[:-2] +
-                                    ['\n'.join(fragments[-2:])])
-                            else:
-                                # If there's no space we can repurpose,
-                                # we would have to go back to the _previous_
-                                # line to find a natural break. We can't, so
-                                # crash here and force the editor to go put in
-                                # a manual %{n} or %{s} somewhere.
-                                raise RuntimeError(
-                                    f"Fixing glue for offset {command.offset} "
-                                    "requires too much backtracking. "
-                                    "Insert extra whitespace to allow first "
-                                    "order line breaks."
-                                )
+                #         # If next line does not start with a space, re-break
+                #         # this line accounting for the glue characters as
+                #         # part of the final word IF it would cause a linebreak
+                #         # when added
+                #         next_word_len = RubyUtils.noruby_len(
+                #             next_tl.split(' ')[0])
+                #         next_word_would_break = False
+                #         if did_break_line:
+                #             next_word_would_break = \
+                #                 RubyUtils.noruby_len(final_broken_line) + \
+                #                 next_word_len > Constants.CHARS_PER_LINE
+                #         else:
+                #             next_word_would_break = \
+                #                 old_cursor_position + \
+                #                 RubyUtils.noruby_len(final_broken_line) + \
+                #                 next_word_len > Constants.CHARS_PER_LINE
+                #         if next_tl and next_tl[0] != ' ' \
+                #                 and linebroken_text[-1] != '\n' \
+                #                 and next_word_would_break:
+                #             # If the broken line contains spaces, change
+                #             # the final space to a newline
+                #             if ' ' in linebroken_text:
+                #                 fragments = linebroken_text.split(' ')
+                #                 linebroken_text = ' '.join(
+                #                     fragments[:-2] +
+                #                     ['\n'.join(fragments[-2:])])
+                #             else:
+                #                 # If there's no space we can repurpose,
+                #                 # we would have to go back to the _previous_
+                #                 # line to find a natural break. We can't, so
+                #                 # crash here and force the editor to go put in
+                #                 # a manual %{n} or %{s} somewhere.
+                #                 raise RuntimeError(
+                #                     f"Fixing glue for offset {command.offset} "
+                #                     "requires too much backtracking. "
+                #                     "Insert extra whitespace to allow first "
+                #                     "order line breaks."
+                #                 )
 
-                            # Re-calc new cursor position
-                            final_broken_line = linebroken_text.split('\n')[-1]
-                            cursor_position = RubyUtils.noruby_len(
-                                final_broken_line)
+                #             # Re-calc new cursor position
+                #             final_broken_line = linebroken_text.split('\n')[-1]
+                #             cursor_position = RubyUtils.noruby_len(
+                #                 final_broken_line)
 
-                # Append trailing \r\n if the original text had it
-                processed_string = linebroken_text + (
-                    "\r\n"
-                    if tl_line.jp_text.endswith("\r\n")
-                    and not linebroken_text.endswith("\r\n")
-                    else "")
+                # # Append trailing \r\n if the original text had it
+                # processed_string = linebroken_text + (
+                #     "\r\n"
+                #     if tl_line.jp_text.endswith("\r\n")
+                #     and not linebroken_text.endswith("\r\n")
+                #     else "")
 
                 # Stick the processed string into our map
-                offset_to_string[command.offset] = processed_string
+                offset_to_string["jp"][command.offset] = tl_line.jp_text
+                offset_to_string["en"][command.offset] = tl_line.en_text
+                offset_to_string["cn"][command.offset] = tl_line.cn_text
+                offset_to_string["cn_t"][command.offset] = tl_line.cn_t_text
 
         return offset_to_string
 
     def pack_linebroken_text_to_mrg(self, offset_to_string):
         # Now that we have processed all the strings, iterate from 0 to
         # max_offset and write each string entry into an MZP.
-        max_offset = max(offset_to_string.keys())
-        offset_table = io.BytesIO()
-        string_table = io.BytesIO()
+        max_offset = max(offset_to_string["jp"].keys())
+        # JP
+        offset_table_raw = io.BytesIO()
+        string_table_raw = io.BytesIO()
+        # EN
+        offset_table_en = io.BytesIO()
+        string_table_en = io.BytesIO()
+        # CN
+        offset_table_cn = io.BytesIO()
+        string_table_cn = io.BytesIO()
+        # CN_T
+        offset_table_cn_t = io.BytesIO()
+        string_table_cn_t = io.BytesIO()
         for offset in range(max_offset + 1):
             # There are a handful of null strings that mark EOF
             # Just write FFs to the offset table, no string data for these
-            if not offset_to_string.get(offset, ''):
+            if not offset_to_string["jp"].get(offset, ''):
                 continue
 
             # Write the offset of this string to the offset table
-            offset_table.write(struct.pack(">I", string_table.tell()))
+            offset_table_raw.write(struct.pack(">I", string_table_raw.tell()))
+            offset_table_en.write(struct.pack(">I", string_table_en.tell()))
+            offset_table_cn.write(struct.pack(">I", string_table_cn.tell()))
+            offset_table_cn_t.write(struct.pack(">I", string_table_cn_t.tell()))
 
             # Write the string data to the string table
-            string_table.write(
-                offset_to_string.get(offset, '').encode('utf-8'))
-
+            string_table_raw.write(offset_to_string["jp"].get(offset, '').encode('utf-8'))
+            string_table_en.write(offset_to_string["en"].get(offset, '').encode('utf-8'))
+            string_table_cn.write(offset_to_string["cn"].get(offset, '').encode('utf-8'))
+            string_table_cn_t.write(offset_to_string["cn_t"].get(offset, '').encode('utf-8'))
         # Finalize the offset table by writing the final offset twice,
         # followed by 12 bytes of 0xFF
-        offset_table.write(struct.pack(">I", string_table.tell()))
-        offset_table.write(struct.pack(">I", string_table.tell()))
-        offset_table.write(struct.pack(">I", 0xFFFFFFFF))
-
-        offset_table.seek(0, io.SEEK_SET)
-        string_table.seek(0, io.SEEK_SET)
-        offset_table_str = offset_table.read()
-        string_table_str = string_table.read()
-
+        # JP
+        offset_table_raw.write(struct.pack(">I", string_table_raw.tell()))
+        offset_table_raw.write(struct.pack(">I", string_table_raw.tell()))
+        offset_table_raw.write(struct.pack(">I", 0xFFFFFFFF))
+        # EN
+        offset_table_en.write(struct.pack(">I", string_table_en.tell()))
+        offset_table_en.write(struct.pack(">I", string_table_en.tell()))
+        offset_table_en.write(struct.pack(">I", 0xFFFFFFFF))
+        # CN
+        offset_table_en.write(struct.pack(">I", string_table_cn.tell()))
+        offset_table_en.write(struct.pack(">I", string_table_cn.tell()))
+        offset_table_en.write(struct.pack(">I", 0xFFFFFFFF))
+        # CN_T
+        offset_table_en.write(struct.pack(">I", string_table_cn_t.tell()))
+        offset_table_en.write(struct.pack(">I", string_table_cn_t.tell()))
+        offset_table_en.write(struct.pack(">I", 0xFFFFFFFF))
+        # Reset to read all 
+        # JP
+        offset_table_raw.seek(0, io.SEEK_SET)
+        string_table_raw.seek(0, io.SEEK_SET)
+        offset_table_raw_str = offset_table_raw.read()
+        string_table_raw_str = string_table_raw.read()
+        # EN
+        offset_table_en.seek(0, io.SEEK_SET)
+        string_table_en.seek(0, io.SEEK_SET)
+        offset_table_en_str = offset_table_en.read()
+        string_table_en_str = string_table_en.read()
+        # CN
+        offset_table_cn.seek(0, io.SEEK_SET)
+        string_table_cn.seek(0, io.SEEK_SET)
+        offset_table_cn_str = offset_table_cn.read()
+        string_table_cn_str = string_table_cn.read()
+        # CN_T
+        offset_table_cn_t.seek(0, io.SEEK_SET)
+        string_table_cn_t.seek(0, io.SEEK_SET)
+        offset_table_cn_t_str = offset_table_cn_t.read()
+        string_table_cn_t_str = string_table_cn_t.read()
         # For whatever reason, the MZP also contains 4 offset/string table
         # pairs consisting of just '  \r\n' . Regenerate these tables too
         # in case they actually mean something.
@@ -425,8 +458,14 @@ class TranslationDb:
 
         # Pack the MZP
         return Mzp.pack([
+            # Original JP Version
+            offset_table_raw_str, string_table_raw_str,
             # Actual translation data
-            offset_table_str, string_table_str,
+            offset_table_en_str, string_table_en_str,
+            # CN
+            offset_table_cn_str, string_table_cn_str,
+            # CNT
+            offset_table_cn_t_str, string_table_cn_t_str,
             # 4 copies of newlines
             newline_offset_table_str, newline_string_table_str,
             space_offset_table_str, space_string_table_str,
@@ -663,32 +702,64 @@ class TranslationDb:
 
         # First script text MZP entry is the string offsets, second is
         # the string data
+        # Edit from Iderr : In mahoyo, alternate between offsets and text
+
+        # Offsets
         string_offsets_raw = script_text_mzp.data[0]
+        string_offsets_en = script_text_mzp.data[2]
+        string_offsets_cn = script_text_mzp.data[4]
+        string_offsets_cn_t = script_text_mzp.data[6]
+        # Text
         string_table_raw = script_text_mzp.data[1]
+        string_table_en = script_text_mzp.data[3]
+        string_table_cn = script_text_mzp.data[5]
+        string_table_cn_t = script_text_mzp.data[7]
 
         # For each 32 bit offset in the offset table, extract the associated
         # JP text
         offset_count = len(string_offsets_raw) // 4
-        strings_by_offset = {}
+        offset_en_count = len(string_offsets_en) // 4
+        strings_by_offset = {"en":{}, "jp":{}, "cn":{}, "cn_t":{}}
         for i in range(offset_count):
-            (data_start,) = struct.unpack('>I', string_offsets_raw[i*4:i*4+4])
-            (data_end,) = struct.unpack(
-                '>I', string_offsets_raw[(i+1)*4:(i+1)*4+4])
-
+            # Get Text from offset
+            # JP
+            (data_jp_start,) = struct.unpack('>I', string_offsets_raw[i*4:i*4+4])
+            (data_jp_end,) = struct.unpack('>I', string_offsets_raw[(i+1)*4:(i+1)*4+4])
+            # EN
+            (data_en_start,) = struct.unpack('>I', string_offsets_en[i*4:i*4+4])
+            (data_en_end,) = struct.unpack('>I', string_offsets_en[(i+1)*4:(i+1)*4+4])
+            # CN
+            (data_cn_start,) = struct.unpack('>I', string_offsets_cn[i*4:i*4+4])
+            (data_cn_end,) = struct.unpack('>I', string_offsets_cn[(i+1)*4:(i+1)*4+4])
+            # CN traditional 
+            (data_cn_t_start,) = struct.unpack('>I', string_offsets_cn_t[i*4:i*4+4])
+            (data_cn_t_end,) = struct.unpack('>I', string_offsets_cn_t[(i+1)*4:(i+1)*4+4])
             # Zero-len string marks end of offset table
-            if data_start == data_end:
+            if data_jp_start == data_jp_end:
                 break
 
             # If it's non-zero, extract the associated string data
-            data = string_table_raw[data_start:data_end]
-            strings_by_offset[i] = data.decode('utf-8')
+            data_raw = string_table_raw[data_jp_start:data_jp_end]
+            data_en = string_table_en[data_en_start:data_en_end]
+            data_cn = string_table_cn[data_cn_start:data_cn_end]
+            data_cn_t = string_table_cn_t[data_cn_t_start:data_cn_t_end]
+            # Set stings by offset
+            strings_by_offset["jp"][i] = data_raw.decode('utf-8')
+            strings_by_offset["en"][i] = data_en.decode('utf-8')
+            strings_by_offset["cn"][i] = data_cn.decode('utf-8')
+            strings_by_offset["cn_t"][i] = data_cn_t.decode('utf-8')
 
         # Hash those strings to build initial content table and
         # offset -> hash table
         content_hash_by_offset = {}
         strings_by_content_hash = {}
-        for offset, jp_text in strings_by_offset.items():
-            tl_line = cls.TLLine(jp_text)
+        for offset, jp_text in strings_by_offset["jp"].items():
+            tl_line = cls.TLLine(
+                jp_text, 
+                en_text=strings_by_offset["en"][offset],
+                cn_text=strings_by_offset["cn"][offset],
+                cn_t_text=strings_by_offset["cn_t"][offset] 
+            )
             content_hash_by_offset[offset] = tl_line.content_hash()
             strings_by_content_hash[tl_line.content_hash()] = tl_line
 
@@ -844,9 +915,11 @@ class TranslationDb:
             }
 
     class TLLine:
-        def __init__(self, jp_text, en_text=None, comment=None):
+        def __init__(self, jp_text, en_text=None, cn_text=None, cn_t_text=None, comment=None):
             self.jp_text = jp_text
             self.en_text = en_text
+            self.cn_text = cn_text
+            self.cn_t_text = cn_t_text
             self.comment = comment
 
         def __repr__(self):
@@ -860,6 +933,8 @@ class TranslationDb:
             return cls(
                 jsonb.get('jp_text'),
                 jsonb.get('en_text', None),
+                jsonb.get('cn_text', None),
+                jsonb.get('cn_t_text', None),
                 jsonb.get('comment', None),
             )
 
@@ -867,5 +942,7 @@ class TranslationDb:
             return {
                 'jp_text': self.jp_text,
                 'en_text': self.en_text,
+                'cn_text': self.cn_text,
+                'cn_t_text': self.cn_t_text,
                 'comment': self.comment,
             }
