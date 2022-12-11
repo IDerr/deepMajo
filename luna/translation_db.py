@@ -329,16 +329,16 @@ class TranslationDb:
                 #             cursor_position = RubyUtils.noruby_len(
                 #                 final_broken_line)
 
-                # # Append trailing \r\n if the original text had it
-                # processed_string = linebroken_text + (
-                #     "\r\n"
-                #     if tl_line.jp_text.endswith("\r\n")
-                #     and not linebroken_text.endswith("\r\n")
-                #     else "")
+                # Append trailing \r\n if the original text had it
+                processed_string = tl_line.en_text + (
+                    "\r\n"
+                    if tl_line.jp_text.endswith("\r\n")
+                    and not tl_line.en_text.endswith("\r\n")
+                    else "")
 
                 # Stick the processed string into our map
                 offset_to_string["jp"][command.offset] = tl_line.jp_text
-                offset_to_string["en"][command.offset] = tl_line.en_text
+                offset_to_string["en"][command.offset] = processed_string
                 offset_to_string["cn"][command.offset] = tl_line.cn_text
                 offset_to_string["cn_t"][command.offset] = tl_line.cn_t_text
 
